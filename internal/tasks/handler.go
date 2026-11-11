@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/adiyatnurkenuly/task-manager-api/internal/auth"
 )
 
 type Task struct {
@@ -22,8 +24,7 @@ type Task struct {
 }
 
 type Handler struct {
-	DB     *sql.DB
-	UserID int64
+	DB *sql.DB
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -35,13 +36,18 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	userID, ok := currentUserID(w, r)
+	if !ok {
+		return
+	}
+
 	rows, err := h.DB.QueryContext(
 		r.Context(),
 		`SELECT id, title, description, status, created_at, updated_at
 		 FROM tasks
 		 WHERE user_id = $1
 		 ORDER BY id DESC`,
-		h.UserID,
+		userID,
 	)
 	if err != nil {
 		log.Println(err)
@@ -83,6 +89,11 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	userID, ok := currentUserID(w, r)
+	if !ok {
+		return
+	}
+
 	id, err := parseTaskID(r)
 	if err != nil {
 		http.Error(w, "Invalid task ID", http.StatusBadRequest)
@@ -97,7 +108,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
          FROM tasks
          WHERE id = $1 AND user_id = $2`,
 		id,
-		h.UserID,
+		userID,
 	).Scan(
 		&task.ID,
 		&task.Title,
@@ -123,6 +134,11 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	userID, ok := currentUserID(w, r)
+	if !ok {
+		return
+	}
+
 	var input struct {
 		Title       string `json:"title"`
 		Description string `json:"description"`
@@ -151,7 +167,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO tasks (user_id, title, description)
 		 VALUES ($1, $2, $3)
 		 RETURNING id, title, description, status, created_at, updated_at`,
-		h.UserID,
+		userID,
 		input.Title,
 		input.Description,
 	).Scan(
@@ -175,6 +191,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	userID, ok := currentUserID(w, r)
+	if !ok {
+		return
+	}
+
 	id, err := parseTaskID(r)
 	if err != nil {
 		http.Error(w, "Invalid task ID", http.StatusBadRequest)
@@ -226,7 +247,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		input.Description,
 		input.Status,
 		id,
-		h.UserID,
+		userID,
 	).Scan(
 		&task.ID,
 		&task.Title,
@@ -252,6 +273,11 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID, ok := currentUserID(w, r)
+	if !ok {
+		return
+	}
+
 	id, err := parseTaskID(r)
 	if err != nil {
 		http.Error(w, "Invalid task ID", http.StatusBadRequest)
@@ -262,7 +288,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		"DELETE FROM tasks WHERE id = $1 AND user_id = $2",
 		id,
-		h.UserID,
+		userID,
 	)
 
 	if err != nil {
@@ -294,4 +320,15 @@ func parseTaskID(r *http.Request) (int64, error) {
 	}
 
 	return id, nil
+}
+
+func currentUserID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	userID, ok := auth.UserID(r.Context())
+
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return 0, false
+	}
+
+	return userID, true
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/adiyatnurkenuly/task-manager-api/internal/auth"
 	"github.com/adiyatnurkenuly/task-manager-api/internal/tasks"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -17,6 +18,11 @@ func main() {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is not set")
+	}
+
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if len(jwtSecret) < 32 {
+		log.Fatal("JWT_SECRET must contain at least 32 bytes")
 	}
 
 	db, err := sql.Open("pgx", databaseURL)
@@ -32,39 +38,37 @@ func main() {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		log.Fatal(err)
+		log.Fatal("Database connection failed: ", err)
 	}
 
 	log.Println("Connected to PostgreSQL")
-
-	var demoUserID int64
-
-	err = db.QueryRowContext(
-		ctx,
-		"SELECT id FROM users WHERE email = $1",
-		"demo@example.test",
-	).Scan(&demoUserID)
-
-	if err != nil {
-		log.Fatal("Demo user not found: ", err)
-	}
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-
 		json.NewEncoder(w).Encode(map[string]string{
 			"status": "ok",
 		})
 	})
 
-	taskHandler := &tasks.Handler{
+	authHandler := &auth.Handler{
 		DB:     db,
-		UserID: demoUserID,
+		Secret: []byte(jwtSecret),
 	}
 
-	taskHandler.Register(mux)
+	mux.HandleFunc("POST /auth/register", authHandler.Register)
+	mux.HandleFunc("POST /auth/login", authHandler.Login)
+
+	taskHandler := &tasks.Handler{
+		DB: db,
+	}
+
+	taskMux := http.NewServeMux()
+	taskHandler.Register(taskMux)
+
+	mux.Handle("/tasks", authHandler.RequireAuth(taskMux))
+	mux.Handle("/tasks/", authHandler.RequireAuth(taskMux))
 
 	log.Println("Server running on port 8080")
 
