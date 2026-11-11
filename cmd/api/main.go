@@ -9,12 +9,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/adiyatnurkenuly/task-manager-api/internal/tasks"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func main() {
 	databaseURL := os.Getenv("DATABASE_URL")
-
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is not set")
 	}
@@ -32,10 +32,22 @@ func main() {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		log.Fatal("Database connection failed: ", err)
+		log.Fatal(err)
 	}
 
 	log.Println("Connected to PostgreSQL")
+
+	var demoUserID int64
+
+	err = db.QueryRowContext(
+		ctx,
+		"SELECT id FROM users WHERE email = $1",
+		"demo@example.test",
+	).Scan(&demoUserID)
+
+	if err != nil {
+		log.Fatal("Demo user not found: ", err)
+	}
 
 	mux := http.NewServeMux()
 
@@ -46,6 +58,13 @@ func main() {
 			"status": "ok",
 		})
 	})
+
+	taskHandler := &tasks.Handler{
+		DB:     db,
+		UserID: demoUserID,
+	}
+
+	taskHandler.Register(mux)
 
 	log.Println("Server running on port 8080")
 
