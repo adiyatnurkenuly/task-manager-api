@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/adiyatnurkenuly/task-manager-api/internal/auth"
+	"github.com/adiyatnurkenuly/task-manager-api/internal/httpx"
 )
 
 type Task struct {
@@ -51,7 +52,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -71,7 +72,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Println(err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
@@ -80,7 +81,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 	if err := rows.Err(); err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -96,7 +97,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 	id, err := parseTaskID(r)
 	if err != nil {
-		http.Error(w, "Invalid task ID", http.StatusBadRequest)
+		httpx.Error(w, "Invalid task ID", http.StatusBadRequest)
 		return
 	}
 
@@ -119,13 +120,13 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "Task not found", http.StatusNotFound)
+		httpx.Error(w, "Task not found", http.StatusNotFound)
 		return
 	}
 
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -144,19 +145,23 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		Description string `json:"description"`
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-
-	if err := decoder.Decode(&input); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+	if !httpx.ReadJSON(w, r, &input, 1<<20) {
 		return
 	}
 
 	input.Title = strings.TrimSpace(input.Title)
 
 	if input.Title == "" || utf8.RuneCountInString(input.Title) > 255 {
-		http.Error(w, "Title must contain 1 to 255 characters", http.StatusBadRequest)
+		httpx.Error(w, "Title must contain 1 to 255 characters", http.StatusBadRequest)
+		return
+	}
+
+	if len(input.Description) > 5000 {
+		httpx.Error(
+			w,
+			"Description must not exceed 5000 bytes",
+			http.StatusBadRequest,
+		)
 		return
 	}
 
@@ -181,7 +186,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -198,7 +203,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 
 	id, err := parseTaskID(r)
 	if err != nil {
-		http.Error(w, "Invalid task ID", http.StatusBadRequest)
+		httpx.Error(w, "Invalid task ID", http.StatusBadRequest)
 		return
 	}
 
@@ -208,27 +213,30 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		Status      string `json:"status"`
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-
-	if err := decoder.Decode(&input); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+	if !httpx.ReadJSON(w, r, &input, 1<<20) {
 		return
 	}
 
 	input.Title = strings.TrimSpace(input.Title)
 
 	if input.Title == "" || utf8.RuneCountInString(input.Title) > 255 {
-		http.Error(w, "Title must contain 1 to 255 characters", http.StatusBadRequest)
+		httpx.Error(w, "Title must contain 1 to 255 characters", http.StatusBadRequest)
+		return
+	}
+
+	if len(input.Description) > 5000 {
+		httpx.Error(
+			w,
+			"Description must not exceed 5000 bytes",
+			http.StatusBadRequest,
+		)
 		return
 	}
 
 	if input.Status != "todo" &&
 		input.Status != "in_progress" &&
 		input.Status != "done" {
-		http.Error(w, "Invalid status", http.StatusBadRequest)
+		httpx.Error(w, "Invalid status", http.StatusBadRequest)
 		return
 	}
 
@@ -258,13 +266,13 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "Task not found", http.StatusNotFound)
+		httpx.Error(w, "Task not found", http.StatusNotFound)
 		return
 	}
 
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -280,7 +288,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	id, err := parseTaskID(r)
 	if err != nil {
-		http.Error(w, "Invalid task ID", http.StatusBadRequest)
+		httpx.Error(w, "Invalid task ID", http.StatusBadRequest)
 		return
 	}
 
@@ -293,19 +301,19 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	affected, err := result.RowsAffected()
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if affected == 0 {
-		http.Error(w, "Task not found", http.StatusNotFound)
+		httpx.Error(w, "Task not found", http.StatusNotFound)
 		return
 	}
 
@@ -326,7 +334,7 @@ func currentUserID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	userID, ok := auth.UserID(r.Context())
 
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		httpx.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return 0, false
 	}
 

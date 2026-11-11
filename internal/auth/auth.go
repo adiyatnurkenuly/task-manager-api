@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/adiyatnurkenuly/task-manager-api/internal/httpx"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -60,7 +61,7 @@ func readCredentials(w http.ResponseWriter, r *http.Request) (credentials, error
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	input, err := readCredentials(w, r)
 	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		httpx.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
@@ -68,12 +69,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	address, err := mail.ParseAddress(email)
 
 	if err != nil || address.Address != email || len(email) > 255 {
-		http.Error(w, "Invalid email", http.StatusBadRequest)
+		httpx.Error(w, "Invalid email", http.StatusBadRequest)
 		return
 	}
 
 	if utf8.RuneCountInString(input.Password) < 8 || len(input.Password) > 72 {
-		http.Error(w, "Password must be at least 8 characters and at most 72 bytes",
+		httpx.Error(w, "Password must be at least 8 characters and at most 72 bytes",
 			http.StatusBadRequest)
 		return
 	}
@@ -84,7 +85,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -101,13 +102,13 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	).Scan(&id)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "Email already registered", http.StatusConflict)
+		httpx.Error(w, "Email already registered", http.StatusConflict)
 		return
 	}
 
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -123,7 +124,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	input, err := readCredentials(w, r)
 	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		httpx.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
@@ -139,13 +140,13 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	).Scan(&id, &passwordHash)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		httpx.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
 
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -154,7 +155,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			[]byte(passwordHash),
 			[]byte(input.Password),
 		) != nil {
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		httpx.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
 
@@ -172,7 +173,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	tokenString, err := token.SignedString(h.Secret)
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -190,7 +191,7 @@ func (h *Handler) RequireAuth(next http.Handler) http.Handler {
 		parts := strings.Fields(r.Header.Get("Authorization"))
 
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			httpx.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -208,13 +209,13 @@ func (h *Handler) RequireAuth(next http.Handler) http.Handler {
 		)
 
 		if err != nil || !token.Valid {
-			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+			httpx.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
 
 		userID, err := strconv.ParseInt(claims.Subject, 10, 64)
 		if err != nil || userID <= 0 {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			httpx.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
