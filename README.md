@@ -37,6 +37,24 @@ A RESTful API for managing tasks, built with Go and PostgreSQL.
 | PUT | /tasks/{id} | Update task | Yes |
 | DELETE | /tasks/{id} | Delete task | Yes |
 
+## Task Filtering and Pagination
+
+GET /tasks supports the following query parameters:
+
+| Parameter | Values | Default |
+|-----------|--------|---------|
+| status | todo, in_progress, done | All |
+| sort | newest, oldest | newest |
+| page | 1–100000 | 1 |
+| limit | 1–100 | 10 |
+
+Example:
+
+GET /tasks?status=done&sort=newest&page=1&limit=5
+
+The response includes tasks, page, limit, total,
+and total_pages.
+
 ## Getting Started
 
 ### Requirements

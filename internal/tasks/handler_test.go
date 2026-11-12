@@ -61,3 +61,78 @@ func TestTasksRequireAuth(t *testing.T) {
 		})
 	}
 }
+
+func TestParseListOptions(t *testing.T) {
+	tests := []struct {
+		name    string
+		query   string
+		want    listOptions
+		wantErr bool
+	}{
+		{
+			name:  "Default options",
+			query: "",
+			want: listOptions{
+				Status: "",
+				Sort:   "newest",
+				Page:   1,
+				Limit:  10,
+			},
+		},
+		{
+			name:  "Valid filters",
+			query: "?status=done&sort=oldest&page=2&limit=5",
+			want: listOptions{
+				Status: "done",
+				Sort:   "oldest",
+				Page:   2,
+				Limit:  5,
+			},
+		},
+		{
+			name:    "Invalid status",
+			query:   "?status=unknown",
+			wantErr: true,
+		},
+		{
+			name:    "Invalid sort",
+			query:   "?sort=random",
+			wantErr: true,
+		},
+		{
+			name:    "Invalid page",
+			query:   "?page=0",
+			wantErr: true,
+		},
+		{
+			name:    "Invalid limit",
+			query:   "?limit=101",
+			wantErr: true,
+		},
+		{
+			name:    "Non-numeric page",
+			query:   "?page=abc",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(
+				http.MethodGet,
+				"/tasks"+tt.query,
+				nil,
+			)
+
+			got, err := parseListOptions(req)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("got %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}

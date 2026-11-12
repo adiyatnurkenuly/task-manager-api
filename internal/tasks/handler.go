@@ -42,13 +42,52 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := h.DB.QueryContext(
+	opts, err := parseListOptions(r)
+	if err != nil {
+		httpx.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var total int64
+
+	err = h.DB.QueryRowContext(
 		r.Context(),
-		`SELECT id, title, description, status, created_at, updated_at
+		`SELECT COUNT(*)
 		 FROM tasks
 		 WHERE user_id = $1
-		 ORDER BY id DESC`,
+		 AND ($2::text = '' OR status = $2::text)`,
 		userID,
+		opts.Status,
+	).Scan(&total)
+
+	if err != nil {
+		log.Println(err)
+		httpx.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	orderBy := "created_at DESC, id DESC"
+	if opts.Sort == "oldest" {
+		orderBy = "created_at ASC, id ASC"
+	}
+
+	offset := (opts.Page - 1) * opts.Limit
+
+	query := `
+		SELECT id, title, description, status, created_at, updated_at
+		FROM tasks
+		WHERE user_id = $1
+		AND ($2::text = '' OR status = $2::text)
+		ORDER BY ` + orderBy + `
+		LIMIT $3 OFFSET $4`
+
+	rows, err := h.DB.QueryContext(
+		r.Context(),
+		query,
+		userID,
+		opts.Status,
+		opts.Limit,
+		offset,
 	)
 	if err != nil {
 		log.Println(err)
@@ -85,8 +124,30 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	totalPages := total / int64(opts.Limit)
+	if total%int64(opts.Limit) != 0 {
+		totalPages++
+	}
+
+	response := struct {
+		Tasks      []Task `json:"tasks"`
+		Page       int    `json:"page"`
+		Limit      int    `json:"limit"`
+		Total      int64  `json:"total"`
+		TotalPages int64  `json:"total_pages"`
+	}{
+		Tasks:      result,
+		Page:       opts.Page,
+		Limit:      opts.Limit,
+		Total:      total,
+		TotalPages: totalPages,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Println(err)
+	}
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
@@ -339,4 +400,66 @@ func currentUserID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	}
 
 	return userID, true
+}
+
+type listOptions struct {
+	Status string
+	Sort   string
+	Page   int
+	Limit  int
+}
+
+func parseListOptions(r *http.Request) (listOptions, error) {
+	q := r.URL.Query()
+
+	opts := listOptions{
+		Status: q.Get("status"),
+		Sort:   q.Get("sort"),
+		Page:   1,
+		Limit:  10,
+	}
+
+	switch opts.Status {
+	case "", "todo", "in_progress", "done":
+	default:
+		return opts, errors.New("Invalid status")
+	}
+
+	if opts.Sort == "" {
+		opts.Sort = "newest"
+	}
+
+	if opts.Sort != "newest" && opts.Sort != "oldest" {
+		return opts, errors.New("Invalid sort")
+	}
+
+	if values, exists := q["page"]; exists {
+		if len(values) != 1 {
+			return opts, errors.New("Invalid page")
+		}
+
+		page, err := strconv.Atoi(values[0])
+
+		if err != nil || page < 1 || page > 100000 {
+			return opts, errors.New("Invalid page")
+		}
+
+		opts.Page = page
+	}
+
+	if values, exists := q["limit"]; exists {
+		if len(values) != 1 {
+			return opts, errors.New("Invalid limit")
+		}
+
+		limit, err := strconv.Atoi(values[0])
+
+		if err != nil || limit < 1 || limit > 100 {
+			return opts, errors.New("Invalid limit")
+		}
+
+		opts.Limit = limit
+	}
+
+	return opts, nil
 }
