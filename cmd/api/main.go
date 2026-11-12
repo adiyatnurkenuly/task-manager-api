@@ -31,47 +31,32 @@ func main() {
 	}
 	defer db.Close()
 
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		5*time.Second,
-	)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
 	if err := db.PingContext(ctx); err != nil {
 		log.Fatal("Database connection failed: ", err)
 	}
-
 	log.Println("Connected to PostgreSQL")
 
 	mux := http.NewServeMux()
-
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"status": "ok",
-		})
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 
-	authHandler := &auth.Handler{
-		DB:     db,
-		Secret: []byte(jwtSecret),
-	}
-
+	authHandler := &auth.Handler{DB: db, Secret: []byte(jwtSecret)}
 	mux.HandleFunc("POST /auth/register", authHandler.Register)
 	mux.HandleFunc("POST /auth/login", authHandler.Login)
 
 	taskHandler := &tasks.Handler{
-		DB: db,
+		Repo: &tasks.PostgresRepository{DB: db},
 	}
-
 	taskMux := http.NewServeMux()
 	taskHandler.Register(taskMux)
-
 	mux.Handle("/tasks", authHandler.RequireAuth(taskMux))
 	mux.Handle("/tasks/", authHandler.RequireAuth(taskMux))
 
 	log.Println("Server running on port 8080")
-
 	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatal(err)
 	}

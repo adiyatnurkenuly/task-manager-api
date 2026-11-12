@@ -24,6 +24,20 @@ A RESTful API for managing tasks, built with Go and PostgreSQL.
 - JSON error responses
 - Automated tests
 
+## Architecture
+
+The project separates HTTP handlers from database operations.
+
+- `cmd/api` - application entry point
+- `internal/auth` - authentication and JWT middleware
+- `internal/tasks/handler.go` - HTTP request handlers
+- `internal/tasks/repository.go` - PostgreSQL data access
+- `internal/httpx` - JSON responses and validation
+- `migrations` - database schema
+
+Task handlers use a repository interface,
+allowing them to be tested without a real database.
+
 ## API Endpoints
 
 | Method | Endpoint | Description | Auth |
