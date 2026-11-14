@@ -123,7 +123,7 @@ Run static analysis:
 
     go vet ./...
 
-## CI/CD
+## Continuous Integration
 
 GitHub Actions automatically runs formatting checks,
 tests, static analysis, and builds on pushes and
